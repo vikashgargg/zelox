@@ -59,6 +59,20 @@ RSS/pod), CPU per-stage, shuffle Flight-message count — **distributed, at 16-v
   [eks-benchmark-infra-runbook](eks-benchmark-infra-runbook.md): flexible instance types
   (`m7g,c6g,m6g,c7g .4xlarge`), multi-AZ nodegroup, or an on-demand Capacity Reservation before the run.
 
+## T1 verification status (2026-07-28, free — laptop/debug, ratio+correctness only)
+Comprehensive end-to-end T1 pass BEFORE any EKS spend (no-surprises discipline):
+- **Streaming correctness gate GREEN (6/6):** C5/C6 continuous no-dup (1 + 4-part scrambled), C7 continuous+crash
+  EO, C1 availableNow completeness, C2 tiny-budget bounded-mem, C4 availableNow+crash EO. `scripts/correctness_gate.sh`.
+- **P2-1 distributed throughput levers (local-cluster 4-worker, Flight in-process):** counts EXACT; coalescer
+  shuffle_send_batches 5090→2478 (2.05× fewer msgs); FLIP-27 batch-queue +26% wall (0.643→0.811M/s).
+- **Full-axis E2E on real MinIO S3 (10M):** correctness `total_events==N` EXACT, peak RSS 1.61 GiB, SAME
+  `object_store` path EKS uses; stage trace confirms the gap is **source-read bound** (source_read≫from_json=0≫
+  exchange). `scripts/minio_e2e_verify.sh`.
+
+**Next tier = T2 (kind, real pods):** catches image-pull/manifest/pod-networking/in-cluster-S3 — the exact
+surprise class that bit prior EKS runs. Needs a Linux arm64 image (build once → load into kind). Only after
+T2 green does T3/EKS run, for the at-scale throughput number alone.
+
 ## Definition of Phase-2-complete
 
 BOARD row **Streaming throughput** moves off `<` to a **measured** `=`/`>` vs Flink at 16-vCPU, AND P2-2…P2-5
