@@ -18,11 +18,13 @@
 **Legend:** ✅ done+measured · 🟡 in-progress/partial · 🔴 gap/unmeasured · ⬜ backlog.
 Status vs **S**=Spark, **F**=Flink: `>` beats, `=` parity, `<` behind, `?` unmeasured.
 
-> **⭐ Milestone (2026-07-24) — rename→zelox + PySpark 4.2 + Phase-1 tri-engine confirmation.** Fresh EKS
-> head-to-head on `zelox:rename42`, both engines equal 6-vCPU, 100M, **S3 output verified**: batch **8.0× vs
-> Spark** (1.89 vs 5.6 GiB), realtime latency **~2× vs Flink** (p50 88 vs 162 ms, tail 2.3×), realtime→S3 EO
-> **dup=0 across kill-9**. Evidence: [RENAME42_EKS_TRIENGINE](benchmarks/RENAME42_EKS_TRIENGINE.md). **These are
-> single-node.** Distributed throughput at 16-vCPU is Phase 2 (unconfirmed): [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
+> **⭐ Milestone (2026-07-24) — rename→zelox + PySpark 4.2 done; batch wins, streaming perf is the open gap.**
+> **Batch vs Spark: wins decisively** — 100M→S3 8.0× faster / ~3× less memory, output byte-identical
+> ([RENAME42_EKS_TRIENGINE](benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink: currently
+> LOSES the perf pillars** on the authoritative 16-vCPU realtime run — throughput ~2.5×, memory up to 3.4×,
+> latency slight ([per-pillar grounded map](design/zelox-per-pillar-grounded-map.md)). Single-node/6-vCPU
+> runs that appear to "win" are **retracted** (low-parallelism artifact). Closing it = the two grounded
+> levers (credit-flow / async commit + columnar shuffle), architect-first: [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
 
 ---
 

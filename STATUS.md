@@ -5,13 +5,16 @@
 > **Latest (2026-07-24): Product rename + PySpark 4.2 + fresh tri-engine confirmation (Phase 1 done).**
 > sail/vajra→**zelox** rename complete (crates, wire/proto, docs, identity — regression-free, Rust 873/0,
 > clippy clean). **PySpark 4.2 canonical**: `createDataFrame` 3GB-config fix + UDF/UDTF worker wire protocol
-> (V4_2) + `trigger(realTime)` wired to the realtime engine. **Fresh EKS tri-engine head-to-head** (both
-> engines equal 6-vCPU, 100M, S3 output verified — [RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)):
-> **batch 8.0× vs Spark** (1.89 vs 5.6 GiB), **realtime latency ~2× vs Flink** (p50 88 vs 162 ms, tail 2.3×,
-> no-GC), **realtime→S3 EO PASS** (dup=0 across kill-9). Torn to $0. **Open / Phase 2:** distributed
-> throughput at 16-vCPU scale is UNCONFIRMED (Phase 1 was single-node; 4xlarge capacity blocked 16-vCPU) —
-> [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Remaining: 13 pandas/arrow
-> 4.2 UDF-kind tests (layer 2b tail, tracked).
+> (V4_2) + `trigger(realTime)` wired to the realtime engine. **Honest perf standing (S3-verified):**
+> **batch vs Spark wins decisively** — 100M→S3 8.0× faster / ~3× less mem, byte-identical
+> ([RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink currently
+> LOSES the perf pillars** on the authoritative 16-vCPU realtime run — throughput ~2.5×, memory up to 3.4×,
+> latency slight ([per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)); single-node/6-vCPU
+> "wins" are retracted (low-parallelism artifact). Dataflow deficit, NOT language (Arroyo, same stack, beats
+> Flink 3–5×). **Active: two grounded levers** — real credit-based flow control (memory) + off-path async
+> epoch commit & columnar shuffle (throughput) — architect-first, T1/T2-validated free before any EKS:
+> [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Also open: 13 pandas/arrow
+> 4.2 UDF-kind tests (layer 2b tail). 4xlarge capacity blocked the 16-vCPU absolute-number confirmation.
 >
 > **Prior (2026-07-06): DataFusion 54.0.0 + Arrow 58.3.0 upgrade COMPLETE + validated.** Full workspace
 > migrated — `cargo test --workspace` 860/0, `clippy --all-targets -D warnings` clean, gold byte-identical to
