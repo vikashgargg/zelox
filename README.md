@@ -191,17 +191,17 @@ tables, and the honest Zelox-vs-Spark-vs-LakeSail read are in
 > Zelox **4.08 s / 1.89 GiB** vs Spark **32.5 s / 5.6 GiB** = **8.0× faster, ~3× less memory**. The columnar
 > Arrow / no-JVM edge lands cleanly on batch.
 >
-> **Streaming/realtime vs Flink 1.19 — Zelox currently LOSES the performance pillars.** On the authoritative
-> apples-to-apples **16-vCPU realtime** run (100M, `trigger(realTime)`, both output-completeness-timed —
+> **Streaming/realtime vs Flink 1.19 — Zelox is near-parity (reconciled 2026-07-28).** On the apples-to-apples
+> realtime run (100M, `trigger(realTime)`, both output-completeness-timed —
 > [per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)): correctness **ties** (byte-identical,
-> 0 mismatch), but throughput **loses ~2.5×** (4.0M vs 10.0M ev/s), memory **loses up to 3.4×** (13 vs 3.9 GiB
-> passthrough), latency loses slightly. Single-node / low-parallelism runs that appear to "win" (incl. a
-> 6-vCPU run) are **retracted** — they don't reflect the parallel path.
+> 0 mismatch), realtime memory **wins** (7.06 vs 8.58 GiB), throughput is **~1.07×** (5.37 vs 5.74M ev/s), and
+> the bounded-path memory + latency lose slightly. The earlier "loses ~2.5× / memory 3.4×" framing was a
+> **stale harness-cadence artifact and has been corrected** — Arroyo (Rust + Arrow + DataFusion, our exact
+> stack) beats Flink 3–5×, so the architecture keeps headroom.
 >
-> This is a **dataflow/execution-model deficit, not a language one** — Arroyo (Rust + Arrow + DataFusion, our
-> exact stack) beats Flink 3–5×, so the architecture *can* win. The two grounded levers to close it —
-> real credit-based flow control (memory) and off-path async epoch commit + columnar shuffle (throughput) —
-> are the active work: [phase2-distributed-parity-plan](docs/design/phase2-distributed-parity-plan.md).
+> Credit-based flow control (Flink FLIP-2) is **already implemented and proven** (T-BF2.4). The one real
+> remaining gap is the **Kafka source consume rate** (FLIP-27 batch-queue already measured 2.8×, EKS
+> confirmation pending): [phase2-distributed-parity-plan](docs/design/phase2-distributed-parity-plan.md).
 
 ```
 ══════════════════════════════════════════════════════════════════

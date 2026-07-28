@@ -1,11 +1,12 @@
 # Tri-engine EKS scorecard — renamed + PySpark 4.2 build (`rename42`, 2026-07-24)
 
-> ⚠️ **READ THIS FIRST — the streaming numbers here are NOT the authoritative comparison.** This run used
-> **single-node, equal 6-vCPU** pods (4xlarge was capacity-blocked). The apparent streaming/realtime "wins"
-> (latency, throughput edge) are the **low-parallelism artifact** that [zelox-per-pillar-grounded-map.md](../design/zelox-per-pillar-grounded-map.md)
-> explicitly retracts: on the rigorous **16-vCPU realtime** path Zelox **loses** throughput ~2.5×, memory up
-> to 3.4×, latency slightly (it ties correctness). **The batch-vs-Spark result below (8×) is real and holds.**
-> Trust the grounded map for streaming; trust the batch numbers here.
+> ⚠️ **READ THIS FIRST — these 6-vCPU streaming absolutes are not the authoritative comparison.** This run
+> used **single-node, equal 6-vCPU** pods (4xlarge was capacity-blocked), so treat the streaming *absolutes*
+> as low-parallelism. For the authoritative streaming standing use [zelox-per-pillar-grounded-map.md](../design/zelox-per-pillar-grounded-map.md)
+> (reconciled 2026-07-28): Zelox **ties correctness, wins realtime memory (7.06 vs 8.58 GiB), is near-parity
+> on throughput (~1.07×, 5.37 vs 5.74M ev/s), loses slightly on bounded-path memory and latency.** The earlier
+> "loses 2.5× / memory 3.4×" framing was a **stale harness-cadence artifact** and has been corrected there.
+> **The batch-vs-Spark result below (8×) is real and holds.**
 
 Fresh EKS head-to-head on the `chore/rename-zelox` build (sail/vajra→zelox rename + PySpark 4.2
 canonical + 4.2 UDF/`trigger(realTime)` wiring). Purpose: confirm the renamed/4.2 engine's standing
