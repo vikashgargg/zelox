@@ -1,12 +1,15 @@
 # Phase 2 — Distributed parity: confirm throughput + run EVERY test distributed vs Spark & Flink
 
 > **Charter framing ([AIM.md](../AIM.md)):** Zelox must OBJECTIVELY BEAT Spark (batch) + Flink (streaming) on
-> throughput at hyperscale, distributed, Kubernetes-native. Phase 1 (this branch) proved the renamed + PySpark
-> 4.2 engine is **correct and wins single-node** (batch 8× vs Spark, realtime latency ~2× vs Flink, EO
-> S3-verified — [RENAME42_EKS_TRIENGINE](../benchmarks/RENAME42_EKS_TRIENGINE.md)). Phase 1 did **NOT** confirm
-> **distributed throughput at scale** — those runs were single-node 6-vCPU (4xlarge capacity blocked 16-vCPU).
-> **Phase 2 = close that gap:** every test distributed (multi-node, kubernetes-cluster mode), throughput
-> confirmed vs both engines at 16-vCPU scale. No claim of distributed-throughput parity until measured here.
+> throughput at hyperscale, distributed, Kubernetes-native. Phase 1 proved the renamed + PySpark 4.2 engine is
+> **correct and wins batch decisively** (8× vs Spark, byte-identical, S3-verified) and is **near-parity on
+> streaming** — ties correctness, wins realtime memory (7.06 vs 8.58 GiB), throughput ~1.07× (reconciled
+> 2026-07-28, [per-pillar grounded map](zelox-per-pillar-grounded-map.md); the earlier "2×/2.5×" streaming
+> figures were harness-cadence/low-parallelism artifacts — corrected). **Phase 1 did NOT confirm distributed
+> throughput at scale** — the streaming runs were single-node/low-parallelism (4xlarge capacity blocked
+> 16-vCPU). **Phase 2 = close exactly that gap:** every test distributed (multi-node, kubernetes-cluster mode),
+> throughput confirmed vs both engines at 16-vCPU scale. **No claim of distributed-throughput parity — or of
+> current throughput at all — until measured here.**
 
 ## Why this is the open axis (grounded, from [BOARD.md](../BOARD.md) §1)
 
@@ -42,8 +45,9 @@ RSS/pod), CPU per-stage, shuffle Flight-message count — **distributed, at 16-v
    decode overlaps consume (no starve).
 3. **Flight shuffle at scale.** The coalescer (2.14× fewer msgs, exchange_cpu≈0) is proven free at T1/T2;
    confirm it holds the throughput at 16-vCPU across real pod-to-pod Flight.
-4. **No-JVM columnar advantage as the structural win.** Zelox already uses less memory/pod (3.70 vs Flink
-   9.27 GiB at scale) — memory headroom is the lever to run more source parallelism per node than Flink.
+4. **No-JVM columnar advantage as the structural win.** Zelox already uses less memory/pod on the realtime
+   path (7.06 vs Flink 8.58 GiB, BOARD line 39) — that memory headroom is the lever to run more source
+   parallelism per node than Flink. Confirm it holds (or widens) distributed at 16-vCPU.
 
 ## SDLC (STANDING — [three-tier-sdlc.md](three-tier-sdlc.md), never skip a tier)
 

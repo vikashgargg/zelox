@@ -184,21 +184,24 @@ tables, and the honest Zelox-vs-Spark-vs-LakeSail read are in
 
 ## Proven Results
 
-> **Latest verified — renamed + PySpark 4.2 build (`zelox:rename42`, 2026-07-24).** Fresh EKS tri-engine
-> head-to-head with the **actual S3 output files read back and verified**, both engines on identical hardware,
-> 100M scale ([full run](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)):
+> **Where Zelox stands, honestly (measured, 2026-07).** Two very different pictures — we claim only the
+> rigorous one.
 >
-> | | Zelox | Spark 3.5.3 / Flink 1.19 | Zelox |
-> |---|--:|--:|:--|
-> | **Batch → S3** (100M, output byte-identical) | **4.08 s / 1.89 GiB** | Spark 32.5 s / 5.6 GiB | **8.0× faster, ~3× less mem** |
-> | **Realtime latency** (`trigger(realTime)`, p50 / tail) | **88 / 131 ms** | Flink 162 / 302 ms | **~2×, tail 2.3× (no-GC)** |
-> | **Realtime → S3 exactly-once** (kill-9 mid-run) | **dup=0, resume == clean** | (Flink mature) | **parity, S3-verified** |
-> | **Streaming throughput** (100M windowed-agg) | 4.09M ev/s | Flink 3.64M ev/s | ~parity (completeness-caveated) |
+> **Batch vs Spark 3.5.3 — Zelox wins decisively (real, repeatable).** 100M → S3, output byte-identical:
+> Zelox **4.08 s / 1.89 GiB** vs Spark **32.5 s / 5.6 GiB** = **8.0× faster, ~3× less memory**. The columnar
+> Arrow / no-JVM edge lands cleanly on batch.
 >
-> *Honest scope:* both engines ran on **equal 6-vCPU** nodes (c7g/m7g 4xlarge were capacity-unavailable in
-> ap-south-1) — ratios are valid, absolutes are ~half the 16-vCPU baseline below. Streaming here is
-> **single-node**; **distributed throughput at 16-vCPU is [Phase 2](docs/design/phase2-distributed-parity-plan.md)**
-> (not yet confirmed — Flink still leads the distributed exchange at scale).
+> **Streaming/realtime vs Flink 1.19 — Zelox is near-parity (reconciled 2026-07-28).** On the apples-to-apples
+> realtime run (100M, `trigger(realTime)`, both output-completeness-timed —
+> [per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)): correctness **ties** (byte-identical,
+> 0 mismatch), realtime memory **wins** (7.06 vs 8.58 GiB), throughput is **~1.07×** (5.37 vs 5.74M ev/s), and
+> the bounded-path memory + latency lose slightly. The earlier "loses ~2.5× / memory 3.4×" framing was a
+> **stale harness-cadence artifact and has been corrected** — Arroyo (Rust + Arrow + DataFusion, our exact
+> stack) beats Flink 3–5×, so the architecture keeps headroom.
+>
+> Credit-based flow control (Flink FLIP-2) is **already implemented and proven** (T-BF2.4). The one real
+> remaining gap is the **Kafka source consume rate** (FLIP-27 batch-queue already measured 2.8×, EKS
+> confirmation pending): [phase2-distributed-parity-plan](docs/design/phase2-distributed-parity-plan.md).
 
 ```
 ══════════════════════════════════════════════════════════════════

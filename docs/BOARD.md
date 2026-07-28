@@ -18,11 +18,15 @@
 **Legend:** ✅ done+measured · 🟡 in-progress/partial · 🔴 gap/unmeasured · ⬜ backlog.
 Status vs **S**=Spark, **F**=Flink: `>` beats, `=` parity, `<` behind, `?` unmeasured.
 
-> **⭐ Milestone (2026-07-24) — rename→zelox + PySpark 4.2 + Phase-1 tri-engine confirmation.** Fresh EKS
-> head-to-head on `zelox:rename42`, both engines equal 6-vCPU, 100M, **S3 output verified**: batch **8.0× vs
-> Spark** (1.89 vs 5.6 GiB), realtime latency **~2× vs Flink** (p50 88 vs 162 ms, tail 2.3×), realtime→S3 EO
-> **dup=0 across kill-9**. Evidence: [RENAME42_EKS_TRIENGINE](benchmarks/RENAME42_EKS_TRIENGINE.md). **These are
-> single-node.** Distributed throughput at 16-vCPU is Phase 2 (unconfirmed): [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
+> **⭐ Milestone (2026-07-28 reconciled) — rename→zelox + PySpark 4.2 done; batch wins, streaming near-parity.**
+> **Batch vs Spark: wins decisively** — 100M→S3 8.0× faster / ~3× less memory, output byte-identical
+> ([RENAME42_EKS_TRIENGINE](benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink: near-parity,
+> NOT a broad loss** — ties correctness, **wins realtime memory (7.06 vs 8.58 GiB)**, throughput **~1.07×**
+> (5.37 vs 5.74M ev/s), loses slightly on bounded-path memory + latency
+> ([per-pillar grounded map](design/zelox-per-pillar-grounded-map.md), reconciled). The earlier "loses 2.5× /
+> memory 3.4×" framing was a **stale harness-cadence artifact — corrected**. Credit-based flow control
+> (FLIP-2) is **DONE & proven** (T-BF2.4). The ONE real remaining gap is the **Kafka source consume rate**
+> (FLIP-27 batch-queue measured 2.8×, EKS confirmation pending): [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
 
 ---
 

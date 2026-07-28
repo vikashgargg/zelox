@@ -5,13 +5,17 @@
 > **Latest (2026-07-24): Product rename + PySpark 4.2 + fresh tri-engine confirmation (Phase 1 done).**
 > sail/vajra→**zelox** rename complete (crates, wire/proto, docs, identity — regression-free, Rust 873/0,
 > clippy clean). **PySpark 4.2 canonical**: `createDataFrame` 3GB-config fix + UDF/UDTF worker wire protocol
-> (V4_2) + `trigger(realTime)` wired to the realtime engine. **Fresh EKS tri-engine head-to-head** (both
-> engines equal 6-vCPU, 100M, S3 output verified — [RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)):
-> **batch 8.0× vs Spark** (1.89 vs 5.6 GiB), **realtime latency ~2× vs Flink** (p50 88 vs 162 ms, tail 2.3×,
-> no-GC), **realtime→S3 EO PASS** (dup=0 across kill-9). Torn to $0. **Open / Phase 2:** distributed
-> throughput at 16-vCPU scale is UNCONFIRMED (Phase 1 was single-node; 4xlarge capacity blocked 16-vCPU) —
-> [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Remaining: 13 pandas/arrow
-> 4.2 UDF-kind tests (layer 2b tail, tracked).
+> (V4_2) + `trigger(realTime)` wired to the realtime engine. **Honest perf standing (S3-verified):**
+> **batch vs Spark wins decisively** — 100M→S3 8.0× faster / ~3× less mem, byte-identical
+> ([RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink:
+> near-parity (reconciled 2026-07-28)** — ties correctness, **wins realtime memory (7.06 vs 8.58 GiB)**,
+> throughput **~1.07×** (5.37 vs 5.74M ev/s), loses slightly on bounded-path memory + latency
+> ([per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)). The earlier "loses 2.5× /
+> memory 3.4×" framing was a **stale harness-cadence artifact — corrected**. Credit-based flow control
+> (FLIP-2) is **DONE & proven** (T-BF2.4); the ONE real remaining gap is the **Kafka source consume rate**
+> (FLIP-27 batch-queue measured 2.8×, EKS confirmation pending):
+> [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Also open: 13 pandas/arrow
+> 4.2 UDF-kind tests (layer 2b tail).
 >
 > **Prior (2026-07-06): DataFusion 54.0.0 + Arrow 58.3.0 upgrade COMPLETE + validated.** Full workspace
 > migrated — `cargo test --workspace` 860/0, `clippy --all-targets -D warnings` clean, gold byte-identical to
