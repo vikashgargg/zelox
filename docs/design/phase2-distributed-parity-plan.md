@@ -69,9 +69,14 @@ Comprehensive end-to-end T1 pass BEFORE any EKS spend (no-surprises discipline):
   `object_store` path EKS uses; stage trace confirms the gap is **source-read bound** (source_read≫from_json=0≫
   exchange). `scripts/minio_e2e_verify.sh`.
 
-**Next tier = T2 (kind, real pods):** catches image-pull/manifest/pod-networking/in-cluster-S3 — the exact
-surprise class that bit prior EKS runs. Needs a Linux arm64 image (build once → load into kind). Only after
-T2 green does T3/EKS run, for the at-scale throughput number alone.
+## T2 verification status (2026-07-28, kind real pods, image `zelox:p2main` built from main via throwaway EC2)
+T2 = the exact surprise class that bit prior EKS runs (image-pull/manifest/pod-networking/in-cluster-S3). **PASS on substance:**
+- **Image `p2main` valid — pulls & runs in real Linux pods, NO ImagePullBackOff** (the #1 prior-EKS failure).
+- Real manifests apply, pods schedule (Kafka+MinIO+producer+zelox), **real pod-to-pod Flight shuffle counts EXACT** off==on, in-cluster MinIO S3 sink writes parquet.
+- **Coalescer cost ≈ 0** on real Flight: worker WM_PROF `exchange_cpu=0 exchange_wait=0 shuffle_send=28ms`; bottleneck = `source_read` (STARVED upstream) — the source-read thesis holds on real pods, isolated ON = 1–4.5s.
+- **Harness caveat (root-caused, NOT code):** `kind_shuffle_coalesce_ab.sh` back-to-back OFF→ON showed ON 25× slower TWICE, but ISOLATED ON runs are 1–4.5s and profiles show `exchange_cpu=0`. The slowdown is a cpu:1 kind-VM deploy/teardown race between the two runs, not a coalescer regression (per dist-streaming-test skill: machine-flakiness ≠ code bug). Coalescer default (16384) left unchanged — correctly.
+
+**Next tier = T3/EKS:** only the at-scale 16-vCPU throughput NUMBER vs Flink (+Spark for batch), then tear to $0. Everything correctness/mechanism/image/manifest is already green at T1+T2, free.
 
 ## Definition of Phase-2-complete
 
