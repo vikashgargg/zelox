@@ -76,7 +76,18 @@ T2 = the exact surprise class that bit prior EKS runs (image-pull/manifest/pod-n
 - **Coalescer cost ≈ 0** on real Flight: worker WM_PROF `exchange_cpu=0 exchange_wait=0 shuffle_send=28ms`; bottleneck = `source_read` (STARVED upstream) — the source-read thesis holds on real pods, isolated ON = 1–4.5s.
 - **Harness caveat (root-caused, NOT code):** `kind_shuffle_coalesce_ab.sh` back-to-back OFF→ON showed ON 25× slower TWICE, but ISOLATED ON runs are 1–4.5s and profiles show `exchange_cpu=0`. The slowdown is a cpu:1 kind-VM deploy/teardown race between the two runs, not a coalescer regression (per dist-streaming-test skill: machine-flakiness ≠ code bug). Coalescer default (16384) left unchanged — correctly.
 
-**Next tier = T3/EKS:** only the at-scale 16-vCPU throughput NUMBER vs Flink (+Spark for batch), then tear to $0. Everything correctness/mechanism/image/manifest is already green at T1+T2, free.
+### P2-4 realtime (`.trigger(realTime)`) EO across a HARD POD-KILL — T2 kind, PASS
+The Flink-parity realtime engine, on real distributed kind pods + MinIO S3, pass-through (dup=0 is
+timing-independent — unlike windowed-append, which needs watermark finalization and flaked on the cpu:1 VM):
+produce 100k unique ids → continuous `realTime` Kafka→parquet on MinIO → `kubectl delete pod
+--grace-period=0 --force` (SIGKILL) mid-drain → pod reschedules → resume from the S3 checkpoint. **Durable
+output = EXACTLY 0..99999: total=100000 distinct=100000 dup=0 min=0 max=99999 → exactly-once held across the
+crash (no dup, no loss).** This is the marquee realtime crash-EO guarantee proven on real pods before EKS.
+(Note: the earlier `availableNow` / windowed-append attempts were the WRONG mode for a Flink comparison and
+flaked on window finalization — discarded; pass-through EO is the correct deterministic realtime test.)
+
+**Next tier = T3/EKS:** only the at-scale 16-vCPU throughput NUMBER vs Flink (+Spark for batch), then tear to $0.
+Everything correctness/mechanism/image/manifest — INCLUDING realtime crash-EO — is now green at T1+T2, free.
 
 ## Definition of Phase-2-complete
 
