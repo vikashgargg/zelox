@@ -1,4 +1,4 @@
-# Zelox per-pillar grounded map — where we ACTUALLY stand vs Flink (measured, honest)
+# Zelox per-pillar grounded map — where we ACTUALLY stand vs Flink, Arroyo, RisingWave & Spark (measured, honest)
 
 > **The standing question:** *"Zelox is a single binary, no-JVM, no serialize/deserialize — why is it
 > still slower than Flink?"* This doc answers it per pillar with **measured EKS numbers**, the exact
@@ -35,6 +35,55 @@ Zelox `.trigger(realTime=…)` vs Flink 1.19, identical keyed tumbling COUNT, bo
 slightly on the bounded-path memory and on latency (both linger/path artifacts).** This is a
 **near-parity** streaming standing, not the broad loss the old revision claimed — and batch vs Spark
 wins decisively (8× / ~3× memory, byte-identical). The remaining true gap is narrow and source-side (§1).
+
+## Multi-engine standing (Flink · Arroyo · RisingWave · Spark) — the AIM charter view
+
+AIM requires beating Spark/Flink/DataFusion/RisingWave/Arroyo on every prod axis. Flink is the streaming
+baseline (above); this section places Zelox against the other frontier engines, per the KB. **Arroyo is the
+one to watch** — Rust+Arrow+DataFusion, our EXACT stack, so it proves the ceiling and exposes our real gap.
+Legend: ✅ win/lead · = tie · 🟡 path-dependent/partial · 🔴 lag · ? unmeasured · N/A not that engine's domain.
+
+| Pillar | vs **Flink** | vs **Arroyo** (Rust/Arrow/DF) | vs **RisingWave 3.0** | vs **Spark** | Grounding |
+|---|---|---|---|---|---|
+| Correctness / EO | = (dup=0 kill-9, byte-identical) | ✅ ≥ (aligned-barrier union commit — more complete than a younger engine) | = (both Chandy-Lamport barriers) | ✅ | BOARD 45; [REF §8] |
+| **Checkpointing** | ✅ **WIN** (O(delta) inc-ckpt on one Arrow substrate, beats ForSt-RocksDB) | ✅ ≥ | = (both S3 state) | ✅ | BOARD 47 |
+| State mgmt / rescale | = (F5 spillable Arrow chunks, key-group FLIP-8) | ✅ ≥ | 🟡 RW ahead on shared-arrangement + MV | ✅ | BOARD 44,48; [REF §8] |
+| Data on S3 / lakehouse | = verified (parquet+EO, same `object_store` as prod) | ✅ ≥ (Arroyo 0.15 adds Iceberg) | = (Hummock S3) | 🟡 Delta/Iceberg partial | T1/T2 S3 E2E |
+| Latency | ✅ **WIN** (p50 30 vs 42ms, tail 4.6–6× no-GC) | ? unmeasured | ? RW sub-100ms on S3 | ✅ | BOARD 40 |
+| Memory | 🟡 realtime WIN 7.06 vs 8.58 GiB (no-JVM edge); bounded loses | ✅ no-JVM single-binary edge | = | ✅ ~3× | BOARD 41 |
+| Batch speed | N/A | **N/A** (Arroyo/RW are streaming-only) | N/A | ✅ **WIN 6.2–8×** | P4/TPC-H |
+| **Streaming throughput** | 🟡 single-node ~1.07×; **distributed 2.2–2.77× LAG** | 🔴 **LAG (~5×, our biggest gap)** | 🟡 behind | N/A | BOARD 42,43; [REF §6,§9] |
+| Incremental MV | — | — | 🔴 RW **leads** (we have changelog/retract, not full MV maintenance) | — | [REF §8] |
+| Spark API / DX | ✅ unique | ✅ unique (Arroyo = SQL only) | ✅ unique (RW = Postgres-wire) | = | BOARD 54 |
+| No-JVM footprint | ✅ | = (Arroyo also Rust) | = (RW also Rust) | ✅ | — |
+
+**The honest headline:** Zelox **leads or ties on correctness, checkpointing (beats Flink), latency, batch
+(6–8× Spark), S3 durability, and Spark-API** — all measured. It **lags on exactly one pillar: distributed
+streaming throughput**, where Arroyo (same stack) leads ~5× and Flink ~2.2–2.77×. "Arroyo excels at
+everything" is true only for that one (highly visible) pillar — Arroyo has no batch engine, no Spark API,
+and a thinner EO/checkpoint/rescale story. **The gap is mechanism, not language** (same stack ⇒ reachable).
+
+**Why Arroyo leads throughput, and where we are on each lever (KB §6/§9):**
+- **(A) Specialized window operator** — Arroyo stores window state in purpose-built in-memory structures
+  (time-based eviction) vs Flink's generic Map/List backends; this is the **10× sliding-window** lever. Zelox
+  uses generic DataFusion grouped-hash → **NOT yet built** (the deeper Arroyo-parity lever).
+- **(B) Shuffle-Edge** — batch + connection-pool + zero-copy Arrow before the network boundary, to amortize
+  per-batch IPC. Our measured distributed gap is EXACTLY this: 24k tiny ~4k-row Flight batches, `exchange_cpu=0`,
+  `shuffle_recv=598s` blocked [REF §6]. Zelox `coalesce_flow_events` **IS this lever — IMPLEMENTED, T1+T2
+  validated (2.14× fewer msgs, cost≈0, counts EXACT); at-scale EKS number is the pending proof.**
+- **(C) One continuous pipeline** vs Spark `availableNow` micro-batch re-plan/commit-per-trigger tax. Zelox
+  realtime mode (`StreamDriver::Realtime`) **is this — crash-EO proven on real pods (dup=0).**
+
+**RisingWave/Polars levers we should also mine (KB §8/§9):** RW **materialized-view incremental computation**
+(we have changelog/retraction, not full MV — the one place RW clearly leads); Polars **per-morsel
+SemaphorePermit** memory discipline (our bounded mpsc + T-BF2.4 credit-flow is the analog, done). Compute/
+storage disaggregation (RW Hummock / Flink ForSt) — our F5+inc-ckpt is the same direction, validated.
+
+**Decision rule (AIM — measure before building):** the one built-but-unproven lever (B, Shuffle-Edge) targets
+our one *measured* gap. Get the **EKS throughput number** first: if B closes the distributed gap, the residual
+Arroyo delta is lever A (specialized window op) — build it then, grounded. One measurement decides what to
+build; don't speculatively code the window operator blind. Full Nexmark (not just windowed-COUNT) is the
+gold-standard streaming benchmark to add for a credible "beats Arroyo/Flink" claim [REF §7].
 
 ## Per-pillar: credible design → Zelox's measured standing → mechanism → what's left
 
