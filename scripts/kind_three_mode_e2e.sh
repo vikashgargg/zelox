@@ -34,12 +34,18 @@ echo ""; echo "############ MODE 2 — STRUCTURED STREAMING availableNow (↔ Sp
 KPOD=$(kk get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}')
 kk exec "$KPOD" -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic m2ss >/dev/null 2>&1
 for i in $(seq 1 20); do kk exec "$KPOD" -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list 2>/dev/null | grep -qx m2ss || break; sleep 2; done
-kk exec "$KPOD" -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic m2ss --partitions 4 --replication-factor 1 >/dev/null 2>&1
-# monotonic ts = contiguous 10s windows; COMPLETE_ON_END flushes all windows at bounded end -> sum==N deterministic
-python3 -c "import sys,json
-N=$N;K=$KEYS;base=1700000000000;pw=max(1,N//100)
-sys.stdout.write(''.join(json.dumps({'k':i%K,'ts':base+(i//pw)*10000,'v':1})+'\n' for i in range(N)))" | \
-  kk exec -i "$KPOD" -- /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic m2ss >/dev/null 2>&1
+# robust k8s producer Job (librdkafka, no fragile exec-pipe) -> fresh topic m2ss
+kk delete job producer --ignore-not-found >/dev/null 2>&1
+sed -E -e 's/name: TOPIC, value: "events"/name: TOPIC, value: "m2ss"/' \
+       -e "s/name: N_EVENTS, value: \"[0-9]*\"/name: N_EVENTS, value: \"$N\"/" \
+       -e 's/name: N_PARTS, value: "[0-9]*"/name: N_PARTS, value: "4"/' \
+       -e 's/cpu: "1[0-9]"/cpu: "1"/g' -e 's/cpu: "[3-9]"/cpu: "1"/g' \
+       -e 's/memory: "[0-9]+Gi"/memory: "1500Mi"/g' k8s/stream/producer-job.yaml | kk apply -f - >/dev/null
+kk wait --for=condition=complete --timeout=900s job/producer >/dev/null 2>&1 && kk logs job/producer 2>/dev/null | grep -a PRODUCED | tail -1
+M2CNT=$(kk exec "$KPOD" -- /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic m2ss 2>/dev/null | awk -F: '{s+=$3} END{print s}')
+echo "  topic m2ss=$M2CNT"
+# clear output path (no stale-state confound); COMPLETE_ON_END flushes all windows at bounded end -> sum==N
+kk exec zelox-client -- sh -c "$S3ENV python3 -c \"import boto3; c=boto3.client('s3',endpoint_url='$MINIO_EP',aws_access_key_id='minioadmin',aws_secret_access_key='minioadmin'); [c.delete_object(Bucket='zelox',Key=o['Key']) for p in ['m2ss_out/','m2ss_ck/'] for o in c.list_objects_v2(Bucket='zelox',Prefix=p).get('Contents',[])]\"" 2>/dev/null || true
 kk set env deploy/zelox-stream ZELOX_COMPLETE_ON_END=1 >/dev/null; kk rollout status deploy/zelox-stream --timeout=120s >/dev/null 2>&1
 until kk logs zelox-client 2>/dev/null | grep -q CLIENT_READY; do sleep 3; done
 R2=$(kk exec zelox-client -- sh -c "$S3ENV SPARK_REMOTE=$SR BOOT=$BOOT TOPIC=m2ss N_EVENTS=$N OUT=s3://zelox/m2ss_out CK=s3://zelox/m2ss_ck python3 /tmp/wagg.py" 2>&1 | grep -aoE 'ZELOX_WAGG.*' | tail -1)

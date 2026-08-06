@@ -15,6 +15,9 @@ MINIO_EP="http://minio.$NS.svc.cluster.local:9000"
 kk() { kubectl --context "$CTX" -n "$NS" "$@"; }
 S3ENV="AWS_REGION=us-east-1 AWS_ENDPOINT=$MINIO_EP AWS_ENDPOINT_URL=$MINIO_EP AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin AWS_ALLOW_HTTP=true"
 
+echo "==== [0] clear S3 output/checkpoint (reproducibility — no stale-state dup confound) ===="
+kk exec zelox-client -- sh -c "$S3ENV python3 -c \"import boto3; c=boto3.client('s3',endpoint_url='$MINIO_EP',aws_access_key_id='minioadmin',aws_secret_access_key='minioadmin'); [c.delete_object(Bucket='zelox',Key=o['Key']) for p in ['rteo/','rteo_ck/'] for o in c.list_objects_v2(Bucket='zelox',Prefix=p).get('Contents',[])]\"" 2>/dev/null && echo "cleared rteo + rteo_ck" || echo "clear best-effort"
+
 echo "==== [1] fresh topic $TOPIC + produce $N unique ids ===="
 KPOD=$(kk get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}')
 kk exec "$KPOD" -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic "$TOPIC" >/dev/null 2>&1
