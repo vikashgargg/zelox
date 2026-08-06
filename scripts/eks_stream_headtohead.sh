@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ⚠️ WRONG-MODE FOR FLINK — DO NOT USE AS A FLINK COMPARISON (docs/design/engine-comparison-mode-mapping.md).
+# This runs Zelox on `availableNow` (micro-batch), which maps to SPARK Structured Streaming, NOT Flink.
+# Comparing availableNow to Flink-continuous handicaps Zelox with a ~25x per-trigger re-plan/commit tax
+# [REF §6]. For the Flink comparison use scripts/eks_realtime_headtohead.sh (Zelox `.trigger(realTime)`).
+# Kept ONLY as the Zelox-vs-Spark structured-streaming harness.
+#
 # Zelox-vs-Flink STREAMING head-to-head on EKS — reproducible orchestration.
 #
 # Assumes an EKS cluster is already up (k8s/stream/eks-stream-cluster.yaml) with

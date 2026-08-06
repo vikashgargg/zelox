@@ -10,7 +10,34 @@ built on the strongest ideas of these systems and fixing their known limits.
 key facts + Zelox implication) in the same turn. This file is the single growing knowledge base; do
 not let learnings evaporate into one-off context. Refresh entries when a major release lands; note dates.
 
-Last refreshed: 2026-06-21.
+Last refreshed: 2026-08-06.
+
+---
+
+## 0. ⭐ STANDING RULE — the three-mode comparison contract (NEVER violate; grounded in AIM)
+
+Zelox = ONE engine = Spark(batch) + Spark Structured Streaming + **Flink-class realtime**, columnar/no-JVM/
+Rust — the union of the best (AIM). A benchmark is valid ONLY if Zelox runs the mode that maps **1:1** to the
+engine it is compared against. This is non-negotiable and has been re-derived too many times — it lives here now.
+
+| Zelox mode | Entry | Compared against | Why 1:1 |
+|---|---|---|---|
+| **Batch** | DataFrame batch API | **Spark batch** (3.5, `local[16]`) | both bounded batch write→read→agg |
+| **Structured streaming** | `.trigger(availableNow=True)` | **Spark Structured Streaming** (`availableNow`) | both micro-batch (re-plan/commit/checkpoint per trigger) |
+| **Realtime** | `.trigger(realTime=<dur>)` (Spark 4.2 Real-Time Mode) | **Flink** (continuous/unbounded) | both ONE long-lived continuous pipeline, no per-trigger re-plan |
+
+**Rules that follow (enforce in every harness/doc/claim):**
+1. **Flink comparison → Zelox `.trigger(realTime)` ONLY.** NEVER compare Zelox `availableNow` to Flink — the
+   ~25× per-trigger micro-batch tax [§6] handicaps Zelox and produces an invalid number. Harness:
+   `eks_realtime_headtohead.sh` (Zelox `stream_realtime_drain.py` vs Flink `flink-sql-realtime.sql`).
+2. **Spark Structured Streaming comparison → Zelox `availableNow`.** `stream_windowed_agg.py`; compare to Spark
+   SS, label as "vs Spark", never "vs Flink".
+3. **Spark batch comparison → Zelox batch.** `batch_s3_bench.py` (ENGINE=zelox|spark).
+4. Any doc citing a "vs Flink" streaming number MUST state the trigger; a `availableNow`-vs-Flink number is
+   INVALID as a Flink claim (this retroactively voids the old "1.068× near-parity" as a *realtime* claim).
+
+Full contract + the defect this fixed: [docs/design/engine-comparison-mode-mapping.md](design/engine-comparison-mode-mapping.md).
+Sources: AIM.md (like-for-like) · §1/§10 Spark 4.2 Real-Time Mode · §6 availableNow micro-batch tax · Flink continuous.
 
 ---
 

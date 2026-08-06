@@ -59,6 +59,19 @@ RSS/pod), CPU per-stage, shuffle Flight-message count — **distributed, at 16-v
   [eks-benchmark-infra-runbook](eks-benchmark-infra-runbook.md): flexible instance types
   (`m7g,c6g,m6g,c7g .4xlarge`), multi-AZ nodegroup, or an on-demand Capacity Reservation before the run.
 
+## Three-mode validation (2026-08-06) — Zelox is ONE engine, each mode tested with the RIGHT tool
+Per REFERENCES §0 (the like-for-like contract). Reliable/deterministic tools — NOT the cpu:1 kind streaming
+harness, which proved unreliable (Kafka crash-looped over multi-day gaps; a stateless pass-through parquet
+append is not a valid EO test — that earlier "dup=0" claim was RETRACTED, see P2-4 below):
+- **BATCH** (↔ Spark batch): `batch_s3_bench.py` on kind+MinIO — **PASS** rows==N, sum exact, distinct_k==KEYS.
+- **STRUCTURED STREAMING** (`availableNow`, ↔ Spark SS): correctness-gate **C1/C2/C4 GREEN** —
+  completeness (sum==N), bounded operator memory (tiny budget), and availableNow+hard-crash **EO**.
+- **REALTIME** (`.trigger(realTime)`/continuous, ↔ Flink): correctness-gate **C5/C6/C7 GREEN** — no-dup
+  (1-part + 4-part scrambled) and continuous+hard-crash **EO** — PLUS EKS windowed EO (dup=0 + crash_sum==
+  clean_sum, `eks_continuous_eo.sh`). This is the aligned-barrier stateful EO path (the guaranteed one).
+- **Mode mapping fixed once-for-all:** REFERENCES §0 + [engine-comparison-mode-mapping.md](engine-comparison-mode-mapping.md);
+  scorecard re-wired to `eks_realtime_headtohead.sh` (realTime vs Flink), never availableNow-vs-Flink again.
+
 ## T1 verification status (2026-07-28, free — laptop/debug, ratio+correctness only)
 Comprehensive end-to-end T1 pass BEFORE any EKS spend (no-surprises discipline):
 - **Streaming correctness gate GREEN (6/6):** C5/C6 continuous no-dup (1 + 4-part scrambled), C7 continuous+crash
@@ -76,15 +89,19 @@ T2 = the exact surprise class that bit prior EKS runs (image-pull/manifest/pod-n
 - **Coalescer cost ≈ 0** on real Flight: worker WM_PROF `exchange_cpu=0 exchange_wait=0 shuffle_send=28ms`; bottleneck = `source_read` (STARVED upstream) — the source-read thesis holds on real pods, isolated ON = 1–4.5s.
 - **Harness caveat (root-caused, NOT code):** `kind_shuffle_coalesce_ab.sh` back-to-back OFF→ON showed ON 25× slower TWICE, but ISOLATED ON runs are 1–4.5s and profiles show `exchange_cpu=0`. The slowdown is a cpu:1 kind-VM deploy/teardown race between the two runs, not a coalescer regression (per dist-streaming-test skill: machine-flakiness ≠ code bug). Coalescer default (16384) left unchanged — correctly.
 
-### P2-4 realtime (`.trigger(realTime)`) EO across a HARD POD-KILL — T2 kind, PASS
-The Flink-parity realtime engine, on real distributed kind pods + MinIO S3, pass-through (dup=0 is
-timing-independent — unlike windowed-append, which needs watermark finalization and flaked on the cpu:1 VM):
-produce 100k unique ids → continuous `realTime` Kafka→parquet on MinIO → `kubectl delete pod
---grace-period=0 --force` (SIGKILL) mid-drain → pod reschedules → resume from the S3 checkpoint. **Durable
-output = EXACTLY 0..99999: total=100000 distinct=100000 dup=0 min=0 max=99999 → exactly-once held across the
-crash (no dup, no loss).** This is the marquee realtime crash-EO guarantee proven on real pods before EKS.
-(Note: the earlier `availableNow` / windowed-append attempts were the WRONG mode for a Flink comparison and
-flaked on window finalization — discarded; pass-through EO is the correct deterministic realtime test.)
+### P2-4 realtime (`.trigger(realTime)`) EO — CORRECTED 2026-08-06 (earlier pass-through claim RETRACTED)
+**Honest correction:** an earlier revision claimed "realtime pod-kill EO PASS (dup=0)" via a **pass-through**
+(stateless Kafka→parquet) test on kind. That is **RETRACTED** — re-runs on the cpu:1 kind VM gave
+non-deterministic results (dup=0 complete / dup=2448 / 4248-partial), proving the **pass-through parquet
+append is NOT a valid EO test**: a stateless FileStreamSink append in continuous mode is not the
+EO-committed path, and completeness is drain-timing-flaky on a laptop.
+- **The PROVEN realtime EO is the WINDOWED/stateful path** — aligned Chandy-Lamport barriers + atomic
+  (offset + windowed-state) commit per epoch — verified **dup=0 AND crash_sum==clean_sum on EKS**
+  (`eks_continuous_eo.sh`) and by correctness-gate C7 (`inc_ckpt_gate.sh`). **That is the credible evidence.**
+- **cpu:1 kind is NOT a reliable env for realtime completeness/EO** (timing-sensitive window finalization).
+  Batch + `availableNow` (bounded, deterministic) test cleanly on kind; realtime EO is validated at EKS scale.
+- **Next (if kind-level realtime EO is wanted):** windowed realtime crash-EO with per-partition closers
+  (mirror `eks_continuous_eo.sh` on MinIO), NOT pass-through. Otherwise trust the EKS windowed EO evidence.
 
 **Next tier = T3/EKS:** only the at-scale 16-vCPU throughput NUMBER vs Flink (+Spark for batch), then tear to $0.
 Everything correctness/mechanism/image/manifest — INCLUDING realtime crash-EO — is now green at T1+T2, free.

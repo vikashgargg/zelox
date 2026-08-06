@@ -25,12 +25,15 @@ gib() { awk -v b="$1" 'BEGIN{printf "%.2f", b/1073741824}'; }
 
 # ---------------------------------------------------------------------------
 streaming_phase() {
-  echo "######## STREAMING SCORECARD (vs Flink 1.19) ########"
+  echo "######## STREAMING SCORECARD (vs Flink 1.19 — REALTIME 1:1) ########"
   REG="$(aws ecr describe-repositories --region "$REGION" --repository-name zelox --query 'repositories[0].repositoryUri' --output text 2>/dev/null | sed 's|/zelox||')"
-  # S1+S2 throughput + peak memory (reuses the validated head-to-head).
-  echo "==== S1+S2 throughput/memory (N=$N) ===="
-  N="$N" REGION="$REGION" bash scripts/eks_stream_headtohead.sh "$N" 2>&1 | mask \
-    | grep -aiE "PRODUCED|FLINK wall|ZELOX_WAGG|ZELOX peak|Flink :|Zelox :" | tee /tmp/tri_stream.txt
+  # CORRECT MODE (docs/design/engine-comparison-mode-mapping.md): Flink maps to Zelox `.trigger(realTime)`
+  # (Spark 4.2 Real-Time Mode), NOT availableNow. The old eks_stream_headtohead.sh (availableNow) handicapped
+  # Zelox with the ~25x micro-batch re-plan/commit tax [REF §6] — invalid Flink comparison. Use the realtime
+  # head-to-head (both = ONE continuous pipeline). availableNow belongs in a Zelox-vs-SPARK comparison.
+  echo "==== S1+S2 REALTIME throughput/memory (N=$N) ===="
+  N="$N" REGION="$REGION" bash scripts/eks_realtime_headtohead.sh "$N" 2>&1 | mask \
+    | grep -aiE "PRODUCED|FLINK_REALTIME_DRAIN|FLINK :|ZELOX_RT|consume_s|ZELOX :|peakRSS" | tee /tmp/tri_stream.txt
   # WM_PROF per-stage (if image has it)
   kk logs deploy/zelox-stream 2>/dev/null | grep -aE "WM_PROF" | tail -1 | mask || true
 
