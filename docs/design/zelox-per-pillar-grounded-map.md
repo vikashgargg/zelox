@@ -26,15 +26,20 @@ Zelox `.trigger(realTime=…)` vs Flink 1.19, identical keyed tumbling COUNT, bo
 | Pillar | Zelox | Flink | Verdict |
 |---|---|---|---|
 | **Correctness / completeness** | 10 win / 100M / per_group=10000 | same | **TIE — byte-identical output, 0 mismatch** |
-| **Throughput** (backlog drain→output-complete) | **5.37M ev/s** | 5.74M ev/s | **NEAR-PARITY — 1.068× slower** |
+| **Throughput** ⚠️ **mode caveat** | **5.37M ev/s** | 5.74M ev/s | 1.068× — but this is **`availableNow` (micro-batch), NOT realtime** — see below |
 | **Peak RSS** — realtime/continuous | **7.06 GiB** | 8.58 GiB | **WIN ~1.2×** |
 | **Peak RSS** — bounded path | 10.38 / 9.61 GiB | 8.57 GiB | **LOSE ~1.12–1.21× (path-specific)** |
 | **Latency** Kafka→Kafka p50 / p99 | 101 / 131 ms | 95 / 127 ms | **LOSE slight; tail ties — linger-bound, see §3** |
 
-**Honest verdict: Zelox TIES correctness, WINS realtime memory, is within ~7% on throughput, loses
-slightly on the bounded-path memory and on latency (both linger/path artifacts).** This is a
-**near-parity** streaming standing, not the broad loss the old revision claimed — and batch vs Spark
-wins decisively (8× / ~3× memory, byte-identical). The remaining true gap is narrow and source-side (§1).
+**Honest verdict: Zelox TIES correctness, WINS realtime memory, loses slightly on bounded-path memory and
+latency.** Batch vs Spark wins decisively (8× / ~3× memory, byte-identical). **⚠️ THROUGHPUT MODE CAVEAT
+(2026-08-06):** the "1.068×" above is a **`availableNow` (micro-batch) vs Flink** number — the WRONG mode
+mapping (availableNow maps to *Spark* streaming; **Flink maps to Zelox `Trigger.RealTime`**). The KB [REF §6]
+shows availableNow pays a ~25× per-trigger re-plan/commit tax a continuous pipeline doesn't — so this
+handicaps Zelox and is not a valid Flink comparison. **The fair `Trigger.RealTime`-vs-Flink throughput at
+scale is UNMEASURED** (tooling exists — `stream_realtime_drain.py` — but was never wired into the scorecard).
+See [engine-comparison-mode-mapping.md](engine-comparison-mode-mapping.md). Do NOT cite 1.068× as "realtime
+vs Flink." Realtime correctness/EO IS proven (crash-EO dup=0). The EKS run's one job = the fair realtime number.
 
 ## Multi-engine standing (Flink · Arroyo · RisingWave · Spark) — the AIM charter view
 
