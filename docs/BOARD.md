@@ -18,15 +18,20 @@
 **Legend:** ✅ done+measured · 🟡 in-progress/partial · 🔴 gap/unmeasured · ⬜ backlog.
 Status vs **S**=Spark, **F**=Flink: `>` beats, `=` parity, `<` behind, `?` unmeasured.
 
-> **⭐ Milestone (2026-07-28 reconciled) — rename→zelox + PySpark 4.2 done; batch wins, streaming near-parity.**
-> **Batch vs Spark: wins decisively** — 100M→S3 8.0× faster / ~3× less memory, output byte-identical
-> ([RENAME42_EKS_TRIENGINE](benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink: near-parity,
-> NOT a broad loss** — ties correctness, **wins realtime memory (7.06 vs 8.58 GiB)**, throughput **~1.07×**
-> (5.37 vs 5.74M ev/s), loses slightly on bounded-path memory + latency
-> ([per-pillar grounded map](design/zelox-per-pillar-grounded-map.md), reconciled). The earlier "loses 2.5× /
-> memory 3.4×" framing was a **stale harness-cadence artifact — corrected**. Credit-based flow control
-> (FLIP-2) is **DONE & proven** (T-BF2.4). The ONE real remaining gap is the **Kafka source consume rate**
-> (FLIP-27 batch-queue measured 2.8×, EKS confirmation pending): [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
+> **⭐ Milestone (2026-08-06) — ONE engine, three modes validated + comparison-mode contract fixed for good.**
+> Zelox = Spark(batch) + Spark Structured Streaming + Flink-class realtime, columnar/no-JVM/Rust (AIM).
+> **The three modes each map 1:1 to the engine they replace (REFERENCES §0, [mode-mapping](design/engine-comparison-mode-mapping.md)):**
+> batch↔Spark batch · `availableNow`↔Spark Structured Streaming · **`.trigger(realTime)`↔Flink** (NEVER
+> availableNow-vs-Flink). **All three validated GREEN with deterministic tools:** batch = kind+MinIO PASS
+> (rows==N, sum exact); structured-streaming = correctness-gate **C1/C2/C4** (complete, bounded-mem, crash-EO);
+> realtime = correctness-gate **C5/C6/C7** (no-dup, crash-EO) + EKS windowed EO (dup=0).
+> **Batch vs Spark: wins decisively** (100M→S3 8.0× / ~3× memory, byte-identical).
+> **Streaming/realtime vs Flink:** correctness/EO/reliability **proven**; realtime memory **wins** (7.06 vs 8.58 GiB);
+> **throughput vs Flink is UNMEASURED at the fair mode** — the old "1.068×" was a wrong-mode (availableNow)
+> number, RETRACTED as a Flink claim. The scorecard is now re-wired to the **realtime** head-to-head
+> (`eks_realtime_headtohead.sh`); the fair realtime-vs-Flink throughput at 16-vCPU is **the one legitimate job
+> of the EKS run**. Credit-flow (FLIP-2) DONE (T-BF2.4); source lever FLIP-27 measured 2.8× (EKS-pending).
+> Plan: [phase2-distributed-parity-plan](design/phase2-distributed-parity-plan.md).
 
 ---
 
@@ -35,7 +40,7 @@ Status vs **S**=Spark, **F**=Flink: `>` beats, `=` parity, `<` behind, `?` unmea
 | Axis | vs S | vs F | State | Evidence (measured) | Owning epic/ticket |
 |------|:---:|:---:|:---:|---|---|
 | **Batch throughput** | `>` | — | ✅ | P4 200M ETL: 5.92s vs Spark 36.94s = **6.2×**; TPC-H SF1 1.78 vs 63.46s | [P4](design/production-workload-benchmark.md) |
-| **Streaming throughput** | — | `<` | 🟡 | Distributed gap = **Kafka source CONSUME rate** (Zelox `StreamConsumer` ~4M/s vs Flink `KafkaSource` ~10M/s); transport/shuffle/serde/JVM RULED OUT. **FLIP-27 batch-queue consume MEASURED 2.8×** (`rd_kafka_consume_batch_queue`, local 10M A/B: 1.38→3.89 M/s, identical Arrow build), kind bounded EXACT + 2.33× wall — gated `ZELOX_KAFKA_BATCH_QUEUE` (now on main). **P2-1 T1 (2026-07-28, local-cluster 4-worker distributed, 5M): counts EXACT bqoff==bqon, coalescer 2.05× fewer Flight msgs (5090→2478), batch-queue +26% wall (0.643→0.811M/s laptop-debug — ratio/correctness only).** EKS at-scale number still pending | **VAJ-BF2** |
+| **Streaming throughput** | — | `?` | 🟡 | ⚠️ **MODE CAVEAT: the fair `.trigger(realTime)`-vs-Flink number is UNMEASURED** — the old "1.068×/5.37M" was `availableNow`-vs-Flink (wrong mode, ~25× micro-batch tax) and is RETRACTED as a Flink claim (REFERENCES §0). Scorecard re-wired to `eks_realtime_headtohead.sh`. Levers on main + T1/T2-validated: **FLIP-27 batch-queue 2.8×** (`ZELOX_KAFKA_BATCH_QUEUE`), coalescer **2.05× fewer Flight msgs** (counts EXACT, cost≈0). Fair realtime throughput at 16-vCPU = **the EKS run's one job** | **VAJ-BF2** |
 | **Realtime windowed completeness** | — | `=` | ✅ | **Zelox continuous == Flink (apples-to-apples, both→MinIO parquet, kind 2026-07-17):** real time-ordered stream = **15 windows / 150000, every (window,key)=10, no partial-split/over-emit/dup = EXACT == Flink**. Root cause (traced w/ instrumentation, grounded Flink `WatermarkStatus.IDLE`): batch-queue source emitted Idle on a TRANSIENT empty drain → exchange excluded an active channel → frozen watermark. FIX = source Idle only at genuine high-watermark (`a3f2ee15`). Far-ahead-closer over-emit also fixed (live watermark floor, `5820abfb`) | [per-pillar map](design/zelox-per-pillar-grounded-map.md) |
 | **Latency (Kafka→Kafka passthrough)** | — | `>` | 🟢 | **T2/kind fair (parallelism=2 both): Zelox p50=30/p99=125/p999=127/max=128ms vs Flink p50=42/p99=580/p999=765/max=767ms — WINS every pct, TAIL 4.6–6× (no-GC).** Full windowed e2e still TODO | [D2](design/prodgrade-dimensions-scorecard.md) |
 | **Memory** | `>` | `~` | 🟡 | Continuous: 7.06 vs Flink 8.58 GiB (win); bounded: 10.38 vs 8.57 (lose) → **path-dependent** | [D3](design/prodgrade-dimensions-scorecard.md), F5 spill |

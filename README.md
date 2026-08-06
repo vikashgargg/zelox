@@ -191,17 +191,17 @@ tables, and the honest Zelox-vs-Spark-vs-LakeSail read are in
 > Zelox **4.08 s / 1.89 GiB** vs Spark **32.5 s / 5.6 GiB** = **8.0× faster, ~3× less memory**. The columnar
 > Arrow / no-JVM edge lands cleanly on batch.
 >
-> **Streaming/realtime vs Flink 1.19 — Zelox is near-parity (reconciled 2026-07-28).** On the apples-to-apples
-> realtime run (100M, `trigger(realTime)`, both output-completeness-timed —
-> [per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)): correctness **ties** (byte-identical,
-> 0 mismatch), realtime memory **wins** (7.06 vs 8.58 GiB), throughput is **~1.07×** (5.37 vs 5.74M ev/s), and
-> the bounded-path memory + latency lose slightly. The earlier "loses ~2.5× / memory 3.4×" framing was a
-> **stale harness-cadence artifact and has been corrected** — Arroyo (Rust + Arrow + DataFusion, our exact
-> stack) beats Flink 3–5×, so the architecture keeps headroom.
->
-> Credit-based flow control (Flink FLIP-2) is **already implemented and proven** (T-BF2.4). The one real
-> remaining gap is the **Kafka source consume rate** (FLIP-27 batch-queue already measured 2.8×, EKS
-> confirmation pending): [phase2-distributed-parity-plan](docs/design/phase2-distributed-parity-plan.md).
+> **Streaming/realtime vs Flink 1.19 — correctness proven; the fair throughput number is the EKS run's job.**
+> Zelox's realtime engine (`.trigger(realTime)`, the Flink-parity mode) **ties correctness** (byte-identical,
+> 0 mismatch), holds **exactly-once across hard crashes** (dup=0), and **wins realtime memory** (7.06 vs 8.58
+> GiB, no-JVM). **Throughput at the fair mode is honestly UNMEASURED:** earlier "near-parity 1.068×" numbers
+> were measured with Zelox on `availableNow` (micro-batch) vs Flink continuous — the **wrong mode** (availableNow
+> maps to *Spark* streaming, not Flink) — and are retracted as a Flink claim. The comparison harness is now
+> re-wired to compare `.trigger(realTime)` ↔ Flink 1:1 (see [mode-mapping](docs/design/engine-comparison-mode-mapping.md)).
+> The levers are built + free-validated (credit-flow FLIP-2 done; FLIP-27 source 2.8×; shuffle coalescer 2.05×
+> fewer Flight messages); the fair realtime-vs-Flink throughput at scale is the one number the EKS run measures.
+> Arroyo (Rust + Arrow + DataFusion, our exact stack) beats Flink 3–5×, so the architecture has the headroom.
+> [phase2-distributed-parity-plan](docs/design/phase2-distributed-parity-plan.md).
 
 ```
 ══════════════════════════════════════════════════════════════════

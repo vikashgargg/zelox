@@ -7,14 +7,13 @@
 > clippy clean). **PySpark 4.2 canonical**: `createDataFrame` 3GB-config fix + UDF/UDTF worker wire protocol
 > (V4_2) + `trigger(realTime)` wired to the realtime engine. **Honest perf standing (S3-verified):**
 > **batch vs Spark wins decisively** — 100M→S3 8.0× faster / ~3× less mem, byte-identical
-> ([RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink:
-> near-parity (reconciled 2026-07-28)** — ties correctness, **wins realtime memory (7.06 vs 8.58 GiB)**,
-> throughput **~1.07×** (5.37 vs 5.74M ev/s), loses slightly on bounded-path memory + latency
-> ([per-pillar grounded map](docs/design/zelox-per-pillar-grounded-map.md)). The earlier "loses 2.5× /
-> memory 3.4×" framing was a **stale harness-cadence artifact — corrected**. Credit-based flow control
-> (FLIP-2) is **DONE & proven** (T-BF2.4); the ONE real remaining gap is the **Kafka source consume rate**
-> (FLIP-27 batch-queue measured 2.8×, EKS confirmation pending):
-> [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Also open: 13 pandas/arrow
+> ([RENAME42_EKS_TRIENGINE](docs/benchmarks/RENAME42_EKS_TRIENGINE.md)). **Streaming/realtime vs Flink:**
+> correctness/EO/reliability **proven** (three-mode contract, REFERENCES §0; realtime crash-EO dup=0),
+> realtime memory **wins** (7.06 vs 8.58 GiB). **Throughput at the fair mode is UNMEASURED** — the old "1.068×"
+> was a wrong-mode (`availableNow`-vs-Flink) number, RETRACTED; scorecard re-wired to `.trigger(realTime)`↔Flink
+> ([mode-mapping](docs/design/engine-comparison-mode-mapping.md)). Levers built+validated (FLIP-2 credit-flow
+> done; FLIP-27 source 2.8×; coalescer 2.05× fewer msgs); the fair realtime-vs-Flink throughput at 16-vCPU is
+> the EKS run's one job. [phase2-distributed-parity-plan.md](docs/design/phase2-distributed-parity-plan.md). Also open: 13 pandas/arrow
 > 4.2 UDF-kind tests (layer 2b tail).
 >
 > **Prior (2026-07-06): DataFusion 54.0.0 + Arrow 58.3.0 upgrade COMPLETE + validated.** Full workspace
