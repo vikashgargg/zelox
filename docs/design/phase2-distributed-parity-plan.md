@@ -59,6 +59,19 @@ RSS/pod), CPU per-stage, shuffle Flight-message count — **distributed, at 16-v
   [eks-benchmark-infra-runbook](eks-benchmark-infra-runbook.md): flexible instance types
   (`m7g,c6g,m6g,c7g .4xlarge`), multi-AZ nodegroup, or an on-demand Capacity Reservation before the run.
 
+## Three-mode validation (2026-08-06) — Zelox is ONE engine, each mode tested with the RIGHT tool
+Per REFERENCES §0 (the like-for-like contract). Reliable/deterministic tools — NOT the cpu:1 kind streaming
+harness, which proved unreliable (Kafka crash-looped over multi-day gaps; a stateless pass-through parquet
+append is not a valid EO test — that earlier "dup=0" claim was RETRACTED, see P2-4 below):
+- **BATCH** (↔ Spark batch): `batch_s3_bench.py` on kind+MinIO — **PASS** rows==N, sum exact, distinct_k==KEYS.
+- **STRUCTURED STREAMING** (`availableNow`, ↔ Spark SS): correctness-gate **C1/C2/C4 GREEN** —
+  completeness (sum==N), bounded operator memory (tiny budget), and availableNow+hard-crash **EO**.
+- **REALTIME** (`.trigger(realTime)`/continuous, ↔ Flink): correctness-gate **C5/C6/C7 GREEN** — no-dup
+  (1-part + 4-part scrambled) and continuous+hard-crash **EO** — PLUS EKS windowed EO (dup=0 + crash_sum==
+  clean_sum, `eks_continuous_eo.sh`). This is the aligned-barrier stateful EO path (the guaranteed one).
+- **Mode mapping fixed once-for-all:** REFERENCES §0 + [engine-comparison-mode-mapping.md](engine-comparison-mode-mapping.md);
+  scorecard re-wired to `eks_realtime_headtohead.sh` (realTime vs Flink), never availableNow-vs-Flink again.
+
 ## T1 verification status (2026-07-28, free — laptop/debug, ratio+correctness only)
 Comprehensive end-to-end T1 pass BEFORE any EKS spend (no-surprises discipline):
 - **Streaming correctness gate GREEN (6/6):** C5/C6 continuous no-dup (1 + 4-part scrambled), C7 continuous+crash
