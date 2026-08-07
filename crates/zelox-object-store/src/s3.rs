@@ -109,12 +109,21 @@ pub async fn get_s3_object_store(url: &Url) -> object_store::Result<AmazonS3> {
         .get_or_init(|| aws_config::defaults(BehaviorVersion::latest()).load())
         .await;
 
-    if let Some(provider) = config.credentials_provider() {
-        let cache = config
-            .identity_cache()
-            .unwrap_or_else(|| IdentityCache::lazy().build());
-        let credentials = S3CredentialProvider::try_new(provider, cache)?;
-        builder = builder.with_credentials(Arc::new(credentials));
+    // STATIC env credentials (AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY) are authoritative and are already
+    // applied by `from_env()`. Only layer the AWS SDK credential-provider chain (IMDS instance role, SSO,
+    // profile, ...) when NO static env creds are present. Otherwise the SDK chain OVERRIDES the static creds
+    // and fails against S3-compatible stores that have no IMDS/role (MinIO, Ceph, R2, ...) — "the credential
+    // provider was not enabled". EKS keeps working: it has no static env creds, so the SDK IMDS role is used.
+    let has_static_env_creds = std::env::var("AWS_ACCESS_KEY_ID").is_ok_and(|v| !v.is_empty())
+        && std::env::var("AWS_SECRET_ACCESS_KEY").is_ok_and(|v| !v.is_empty());
+    if !has_static_env_creds {
+        if let Some(provider) = config.credentials_provider() {
+            let cache = config
+                .identity_cache()
+                .unwrap_or_else(|| IdentityCache::lazy().build());
+            let credentials = S3CredentialProvider::try_new(provider, cache)?;
+            builder = builder.with_credentials(Arc::new(credentials));
+        }
     }
 
     let mut builder = parse_s3_url(builder, url)?;
