@@ -1,0 +1,51 @@
+# Spark 4.2.0 Structured Streaming (availableNow) baseline on kind — the Spark side of the
+# structured-streaming comparison (Zelox availableNow ↔ Spark Structured Streaming, per REFERENCES §0).
+# Reads the SAME Kafka `events` topic, IDENTICAL 10s event-time tumbling keyed COUNT, writes Parquet to
+# MinIO. availableNow = bounded micro-batch drain -> wall = catch-up throughput, apples-to-apples with
+# Zelox `.trigger(availableNow)`. Java 17 + pyspark 4.2 + hadoop-aws 3.5.0 + spark-sql-kafka. MinIO creds.
+# Requires ConfigMap 'spark-ss-script'. Env S3_OUT/N_ROWS/TOPIC injected at run time.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: spark-ss, namespace: stream }
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: spark
+          image: python:3.12-slim-bookworm
+          resources:
+            requests: { cpu: "1", memory: "2Gi" }
+            limits: { cpu: "2", memory: "3Gi" }
+          env:
+            - { name: BENCH_REMOTE, value: "local[2]" }
+            - { name: S3_OUT, value: "__S3_OUT__" }
+            - { name: N_ROWS, value: "__N_ROWS__" }
+            - { name: TOPIC, value: "__TOPIC__" }
+            - { name: BOOT, value: "kafka.stream.svc.cluster.local:9092" }
+            - { name: SPARK_LOCAL_IP, value: "127.0.0.1" }
+            - name: PYSPARK_SUBMIT_ARGS
+              value: >-
+                --packages org.apache.hadoop:hadoop-aws:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0
+                --conf spark.hadoop.fs.s3a.endpoint=http://minio.stream.svc.cluster.local:9000
+                --conf spark.hadoop.fs.s3a.access.key=minioadmin
+                --conf spark.hadoop.fs.s3a.secret.key=minioadmin
+                --conf spark.hadoop.fs.s3a.path.style.access=true
+                --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+                --conf spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+                --driver-memory 1500m --conf spark.sql.shuffle.partitions=8 pyspark-shell
+          volumeMounts: [ { name: script, mountPath: /app } ]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              apt-get update -qq && apt-get install -y -qq openjdk-17-jre-headless procps >/dev/null
+              pip install --quiet "setuptools<81" "pyspark==4.2.0" pandas pyarrow
+              echo "=== Spark 4.2.0 Structured Streaming (availableNow) $TOPIC -> $S3_OUT ==="
+              S3_OUT="$(echo "$S3_OUT" | sed 's|^s3://|s3a://|')" python3 /app/spark_ss_wagg.py
+              cat /sys/fs/cgroup/memory.peak 2>/dev/null | awk '{printf "SPARK_SS_PEAK_RSS_GiB=%.2f\n",$1/1073741824}'
+      volumes:
+        - name: script
+          configMap: { name: spark-ss-script }
